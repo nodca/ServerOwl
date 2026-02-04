@@ -11,6 +11,7 @@ AI 驱动的个人服务器运维助手，让服务器管理更智能、更简�
 - **双主高可用** - 支持多 Master 热备，自动故障转移
 - **技能系统** - 可扩展的 YAML 技能定义，快速添加新能力
 - **实时监控** - CPU、内存、磁盘、容器状态实时采集
+- **企业微信集成** - 通过企业微信对话管理服务器，接收告警通知
 - **Web 管理面板** - 现代化 React 前端，可视化管理
 
 ## 架构
@@ -127,6 +128,26 @@ sudo systemctl enable owl-agent
 sudo systemctl start owl-agent
 ```
 
+## 企业微信集成
+
+ServerOwl 支持接入企业微信，实现：
+
+- **对话式运维** - 在企业微信中直接与 AI 对话，执行服务器管理任务
+- **告警通知** - 服务器异常时自动推送告警到企业微信
+- **消息回调** - 支持企业微信消息回调，实时响应指令
+
+配置示例：
+
+```yaml
+wechat:
+  corp_id: "your-corp-id"
+  agent_id: 1000002
+  secret: "your-secret"
+  token: "callback-token"
+  encoding_aes_key: "your-aes-key"
+  default_user: "@all"
+```
+
 ## 技能系统
 
 ServerOwl 支持通过 YAML 定义技能，快速扩展 AI 能力：
@@ -158,6 +179,8 @@ steps:
 │   ├── llm/             # LLM 客户端
 │   ├── monitor/         # 监控采集
 │   ├── skill/           # 技能系统
+│   ├── wecom/           # 企业微信回调
+│   ├── notifier/        # 通知推送
 │   └── web/             # Web API
 ├── configs/             # 配置文件示例
 ├── deploy/              # 部署脚本和配置
