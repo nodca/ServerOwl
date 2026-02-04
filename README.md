@@ -7,7 +7,7 @@ AI 驱动的个人服务器运维助手，让服务器管理更智能、更简�
 ## 特性
 
 - **智能对话** - 通过自然语言与服务器交互，执行运维任务
-- **ReAct Agent** - 基于 ReAct 架构的 AI Agent，支持多步推理和工具调用
+- **Plan-and-Execute Agent** - 复杂任务先规划再执行，简单任务直接响应
 - **分层记忆系统** - 短期/长期/工作记忆，让 AI 记住上下文和历史操作
 - **环境自动扫描** - 自动发现 Docker 容器、数据库配置、Nginx/Caddy 站点
 - **多节点管理** - Master-Agent 架构，集中管理多台服务器
@@ -23,7 +23,7 @@ AI 驱动的个人服务器运维助手，让服务器管理更智能、更简�
 ┌─────────────────────────────────────┐     ┌─────────────────────────────────────┐
 │           Master A                  │◄───►│           Master B                  │
 │  ┌─────────────────────────────┐   │ 同步 │  ┌─────────────────────────────┐   │
-│  │  - ReAct Agent Engine       │   │     │  │  - ReAct Agent Engine       │   │
+│  │  - Plan-and-Execute Agent    │   │     │  │  - Plan-and-Execute Agent    │   │
 │  │  - Memory System            │   │     │  │  - Memory System            │   │
 │  │  - Skill Manager            │   │     │  │  - Skill Manager            │   │
 │  │  - Environment Scanner      │   │     │  │  - Environment Scanner      │   │
@@ -226,7 +226,7 @@ sudo systemctl start owl-agent
 │   ├── serverowl/       # Master 入口
 │   └── owl-agent/       # Agent 入口
 ├── internal/
-│   ├── agent/           # ReAct Agent 引擎
+│   ├── agent/           # Plan-and-Execute Agent 引擎
 │   ├── agent-node/      # 分布式 Agent 节点
 │   ├── memory/          # 分层记忆系统
 │   ├── llm/             # LLM 客户端
