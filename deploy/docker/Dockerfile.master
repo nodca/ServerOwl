@@ -1,4 +1,4 @@
-# Owl Master Dockerfile (前后端分离版)
+# ServerOwl Master Dockerfile (前后端分离版)
 # 多阶段构建：前端 + 后端
 
 # ===== 前端构建阶段 =====
@@ -25,30 +25,28 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o owl-master ./cmd/serverowl
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o serverowl ./cmd/serverowl
 
 # ===== 运行阶段 =====
 FROM alpine:3.19
 
 RUN apk add --no-cache ca-certificates tzdata wget
 
-RUN addgroup -S owl && adduser -S owl -G owl
+RUN mkdir -p /app/configs /app/web /app/skills /var/log/serverowl
 
-RUN mkdir -p /etc/owl /var/lib/owl/static /var/log/owl \
-    && chown -R owl:owl /var/lib/owl /var/log/owl
+WORKDIR /app
 
 # 复制后端二进制
-COPY --from=backend-builder /build/owl-master /usr/local/bin/owl-master
+COPY --from=backend-builder /build/serverowl /app/serverowl
 
 # 复制前端构建产物
-COPY --from=frontend-builder /frontend/dist /var/lib/owl/static
+COPY --from=frontend-builder /frontend/dist /app/web
 
 # 复制默认配置
-COPY deploy/docker/config/master.yaml /etc/owl/master.yaml
-
-USER owl
+COPY deploy/docker/config/master.yaml /app/configs/config.yaml
+COPY configs/tool_whitelist.yaml /app/configs/tool_whitelist.yaml
 
 EXPOSE 19527 19528
 
-ENTRYPOINT ["/usr/local/bin/owl-master"]
-CMD ["-config", "/etc/owl/master.yaml"]
+ENTRYPOINT ["/app/serverowl"]
+CMD ["-config", "/app/configs/config.yaml"]

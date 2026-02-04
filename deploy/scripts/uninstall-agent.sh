@@ -46,23 +46,12 @@ if [ -f /usr/local/bin/owl-agent ]; then
 fi
 
 # 询问是否删除配置和数据
-read -p "是否删除配置文件和日志? [y/N] " -n 1 -r
+read -p "是否删除配置文件和数据? [y/N] " -n 1 -r
 echo
 if [[ $REPLY =~ ^[Yy]$ ]]; then
-  log_info "删除配置和日志..."
-  rm -rf /etc/owl
-  rm -rf /var/log/owl
-  rm -rf /var/lib/owl
-fi
-
-# 询问是否删除用户
-read -p "是否删除 owl 用户? [y/N] " -n 1 -r
-echo
-if [[ $REPLY =~ ^[Yy]$ ]]; then
-  if id "owl" &>/dev/null; then
-    log_info "删除 owl 用户..."
-    userdel owl
-  fi
+  log_info "删除配置和数据..."
+  rm -rf /etc/owl-agent
+  rm -rf /var/lib/owl-agent
 fi
 
 echo ""

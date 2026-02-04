@@ -1,37 +1,57 @@
-# Owl Master Docker Compose 配置
+# ServerOwl Docker Compose 配置
 # 生产模式: docker-compose up -d
 # 开发模式: docker-compose -f docker-compose.yaml -f docker-compose.dev.yaml up
 
 services:
-  owl-master:
-    image: owl-master:latest
+  serverowl:
+    image: serverowl:latest
     build:
       context: ../..
       dockerfile: deploy/docker/Dockerfile.master
-    container_name: owl-master
+    container_name: serverowl
     restart: unless-stopped
     ports:
-      - "19527:19527"    # WebSocket + Master 同步
+      - "19527:19527"    # WebSocket + Agent 连接
       - "19528:19528"    # Web UI + HTTP API
     volumes:
-      - ./config/master.yaml:/etc/owl/master.yaml:ro
-      - owl-data:/var/lib/owl
-      - owl-logs:/var/log/owl
+      - ./config/master.yaml:/app/configs/config.yaml:ro
+      - serverowl-data:/app/data
     environment:
-      - OWL_LOG_LEVEL=info
+      - TZ=Asia/Shanghai
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:19528/api/health"]
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:19528/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 10s
     networks:
-      - owl-network
+      - serverowl-network
+    depends_on:
+      - postgres
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: serverowl-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: serverowl
+      POSTGRES_PASSWORD: ServerOwl2026
+      POSTGRES_DB: serverowl
+      TZ: Asia/Shanghai
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - serverowl-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U serverowl"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 volumes:
-  owl-data:
-  owl-logs:
+  serverowl-data:
+  postgres-data:
 
 networks:
-  owl-network:
+  serverowl-network:
     driver: bridge

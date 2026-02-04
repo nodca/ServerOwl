@@ -20,9 +20,8 @@ log_error() { echo -e "${RED}[ERROR]${NC} $1"; exit 1; }
 MASTER_URL=""
 AGENT_NAME=""
 INSTALL_DIR="/usr/local/bin"
-CONFIG_DIR="/etc/owl"
-LOG_DIR="/var/log/owl"
-DATA_DIR="/var/lib/owl"
+CONFIG_DIR="/etc/owl-agent"
+DATA_DIR="/var/lib/owl-agent"
 VERSION="latest"
 TAGS=""
 
@@ -51,7 +50,7 @@ while [[ $# -gt 0 ]]; do
       echo "用法: $0 [选项]"
       echo ""
       echo "选项:"
-      echo "  -m, --master <url>    Master 服务器地址 (必填)"
+      echo "  -m, --master <url>    Master 服务器地址 (必填，如 192.168.1.10:19527)"
       echo "  -n, --name <name>     Agent 名称 (默认: 主机名)"
       echo "  -v, --version <ver>   安装版本 (默认: latest)"
       echo "  -t, --tags <tags>     标签，逗号分隔"
@@ -90,20 +89,9 @@ detect_arch() {
   esac
 }
 
-# 检测操作系统
-detect_os() {
-  if [ -f /etc/os-release ]; then
-    . /etc/os-release
-    echo "$ID"
-  else
-    log_error "无法检测操作系统"
-  fi
-}
-
 ARCH=$(detect_arch)
-OS=$(detect_os)
 
-log_info "检测到系统: $OS ($ARCH)"
+log_info "检测到架构: $ARCH"
 
 # 设置默认 Agent 名称
 if [ -z "$AGENT_NAME" ]; then
@@ -113,38 +101,28 @@ fi
 log_info "Agent 名称: $AGENT_NAME"
 log_info "Master 地址: $MASTER_URL"
 
-# 创建 owl 用户
-create_user() {
-  if ! id "owl" &>/dev/null; then
-    log_info "创建 owl 用户..."
-    useradd -r -s /sbin/nologin -d /var/lib/owl owl
-  fi
-}
-
 # 创建目录
 create_dirs() {
   log_info "创建目录..."
-  mkdir -p "$CONFIG_DIR" "$LOG_DIR" "$DATA_DIR"
-  chown -R owl:owl "$LOG_DIR" "$DATA_DIR"
+  mkdir -p "$CONFIG_DIR" "$DATA_DIR"
 }
 
 # 下载二进制文件
 download_binary() {
   log_info "下载 Owl Agent..."
 
-  local download_url="${MASTER_URL}/download/owl-agent-linux-${ARCH}"
+  # 尝试从 Master 下载
+  local download_url="http://${MASTER_URL%:*}:19528/download/owl-agent-linux-${ARCH}"
 
   if command -v curl &>/dev/null; then
-    curl -sSL -o "${INSTALL_DIR}/owl-agent" "$download_url" || {
-      log_warn "从 Master 下载失败，尝试从 GitHub 下载..."
-      curl -sSL -o "${INSTALL_DIR}/owl-agent" \
-        "https://github.com/your-org/owl/releases/${VERSION}/download/owl-agent-linux-${ARCH}"
+    curl -sSL -o "${INSTALL_DIR}/owl-agent" "$download_url" 2>/dev/null || {
+      log_warn "从 Master 下载失败"
+      log_error "请手动下载 owl-agent 并放置到 ${INSTALL_DIR}/"
     }
   elif command -v wget &>/dev/null; then
-    wget -q -O "${INSTALL_DIR}/owl-agent" "$download_url" || {
-      log_warn "从 Master 下载失败，尝试从 GitHub 下载..."
-      wget -q -O "${INSTALL_DIR}/owl-agent" \
-        "https://github.com/your-org/owl/releases/${VERSION}/download/owl-agent-linux-${ARCH}"
+    wget -q -O "${INSTALL_DIR}/owl-agent" "$download_url" 2>/dev/null || {
+      log_warn "从 Master 下载失败"
+      log_error "请手动下载 owl-agent 并放置到 ${INSTALL_DIR}/"
     }
   else
     log_error "请安装 curl 或 wget"
@@ -161,13 +139,10 @@ generate_config() {
   # 解析 tags
   local tags_yaml=""
   if [ -n "$TAGS" ]; then
-    tags_yaml="tags:"
     IFS=',' read -ra TAG_ARRAY <<< "$TAGS"
     for tag in "${TAG_ARRAY[@]}"; do
-      tags_yaml="${tags_yaml}\n  - ${tag}"
+      tags_yaml="${tags_yaml}    - \"${tag}\"\n"
     done
-  else
-    tags_yaml="tags: []"
   fi
 
   cat > "${CONFIG_DIR}/agent.yaml" << EOF
@@ -175,33 +150,71 @@ generate_config() {
 # 由安装脚本自动生成
 
 agent:
+  id: ""
   name: "${AGENT_NAME}"
-  $(echo -e "$tags_yaml")
-
-master:
-  url: "${MASTER_URL}"
-  heartbeat_interval: 30s
-  retry_interval: 5s
-
-websocket:
-  enabled: true
-  ping_interval: 30s
+  tags:
+$(if [ -n "$tags_yaml" ]; then echo -e "$tags_yaml"; else echo "    - \"default\""; fi)
+  labels:
+    installed_by: "script"
+  heartbeat_interval: 10s
   reconnect_interval: 5s
+  command_timeout: 5m
+  data_dir: "${DATA_DIR}"
+
+masters:
+  - id: "master-01"
+    name: "主节点"
+    addr: "${MASTER_URL}"
+    priority: 1
+    is_active: true
 
 metrics:
-  collect_interval: 60s
-  include_processes: true
-  process_top_n: 10
+  enabled: true
+  collect_interval: 15s
+  report_interval: 30s
+  include_disk: true
 
-logging:
-  level: info
-  file: "${LOG_DIR}/agent.log"
-  max_size: 100
-  max_backups: 3
-  max_age: 7
+rules:
+  - id: "high-cpu-alert"
+    name: "CPU 使用率过高"
+    enabled: true
+    condition:
+      type: "metric"
+      metric: "cpu_usage"
+      operator: ">"
+      threshold: 90
+    actions:
+      - type: "notify"
+        command: "CPU 使用率超过 90%"
+    cooldown: 5m
+
+  - id: "high-memory-alert"
+    name: "内存使用率过高"
+    enabled: true
+    condition:
+      type: "metric"
+      metric: "memory_usage"
+      operator: ">"
+      threshold: 85
+    actions:
+      - type: "notify"
+        command: "内存使用率超过 85%"
+    cooldown: 5m
+
+  - id: "disk-space-alert"
+    name: "磁盘空间不足"
+    enabled: true
+    condition:
+      type: "metric"
+      metric: "disk_usage"
+      operator: ">"
+      threshold: 90
+    actions:
+      - type: "notify"
+        command: "磁盘使用率超过 90%"
+    cooldown: 1h
 EOF
 
-  chown owl:owl "${CONFIG_DIR}/agent.yaml"
   chmod 640 "${CONFIG_DIR}/agent.yaml"
   log_info "配置文件已生成: ${CONFIG_DIR}/agent.yaml"
 }
@@ -210,34 +223,24 @@ EOF
 install_service() {
   log_info "安装 systemd 服务..."
 
-  cat > /etc/systemd/system/owl-agent.service << 'EOF'
+  cat > /etc/systemd/system/owl-agent.service << EOF
 [Unit]
 Description=Owl Agent - Server Monitoring Agent
-Documentation=https://github.com/your-org/owl
+Documentation=https://github.com/your-org/serverowl
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-User=owl
-Group=owl
-ExecStart=/usr/local/bin/owl-agent -config /etc/owl/agent.yaml
-ExecReload=/bin/kill -HUP $MAINPID
+ExecStart=${INSTALL_DIR}/owl-agent -config ${CONFIG_DIR}/agent.yaml
+ExecReload=/bin/kill -HUP \$MAINPID
 Restart=always
 RestartSec=5
 StartLimitInterval=60
 StartLimitBurst=3
 
-NoNewPrivileges=true
-ProtectSystem=strict
-ProtectHome=read-only
-ReadWritePaths=/var/log/owl /var/lib/owl
-PrivateTmp=true
-
 LimitNOFILE=65536
 LimitNPROC=4096
-
-Environment=OWL_LOG_LEVEL=info
 
 [Install]
 WantedBy=multi-user.target
@@ -270,7 +273,6 @@ show_status() {
   echo "=========================================="
   echo ""
   echo "配置文件: ${CONFIG_DIR}/agent.yaml"
-  echo "日志文件: ${LOG_DIR}/agent.log"
   echo "服务状态: systemctl status owl-agent"
   echo ""
   echo "常用命令:"
@@ -285,7 +287,6 @@ show_status() {
 main() {
   log_info "开始安装 Owl Agent..."
 
-  create_user
   create_dirs
   download_binary
   generate_config
