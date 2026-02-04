@@ -587,8 +587,9 @@ func (s *Server) handleEnvironment(w http.ResponseWriter, r *http.Request) {
 			// 返回所有节点的环境信息
 			allNodes := s.envManager.GetAllNodes()
 			s.jsonResponse(w, http.StatusOK, map[string]any{
-				"success": true,
-				"data":    allNodes,
+				"success":     true,
+				"data":        allNodes,
+				"localNodeId": s.envManager.GetLocalNodeID(),
 			})
 			return
 		}

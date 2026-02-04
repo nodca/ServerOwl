@@ -132,6 +132,14 @@ func (m *EnvironmentManager) Get() *Environment {
 	return m.env
 }
 
+// GetLocalNodeID 获取本地节点 ID
+func (m *EnvironmentManager) GetLocalNodeID() string {
+	if m.localNodeID == "" {
+		return "local"
+	}
+	return m.localNodeID
+}
+
 // GetAllNodes 获取所有节点的环境信息
 func (m *EnvironmentManager) GetAllNodes() map[string]*Environment {
 	result := make(map[string]*Environment)

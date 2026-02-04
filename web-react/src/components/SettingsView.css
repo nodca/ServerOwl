@@ -142,6 +142,10 @@
   font-size: 0.85rem;
   cursor: pointer;
   transition: all 0.2s;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
 }
 
 .node-tab:hover {
@@ -153,6 +157,25 @@
   background: linear-gradient(135deg, rgba(74, 158, 255, 0.3), rgba(124, 58, 237, 0.3));
   border-color: rgba(74, 158, 255, 0.5);
   color: #fff;
+}
+
+.node-tab .node-name {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.node-tab .local-badge {
+  font-size: 0.65rem;
+  background: rgba(34, 197, 94, 0.3);
+  color: #22c55e;
+  padding: 0.1rem 0.3rem;
+  border-radius: 3px;
+}
+
+.node-tab .node-time {
+  font-size: 0.7rem;
+  color: rgba(255, 255, 255, 0.4);
 }
 
 /* NodesView 刷新按钮样式 */

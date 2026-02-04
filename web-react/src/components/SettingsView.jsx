@@ -1,8 +1,49 @@
 import { motion } from 'framer-motion'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { api } from '../services/api'
 import PasswordGate from './PasswordGate'
 import './SettingsView.css'
+
+// 简单的对象转 YAML 格式（移到组件外部避免依赖问题）
+const formatYaml = (obj, indent = 0) => {
+  if (!obj || typeof obj !== 'object') return ''
+  const spaces = '  '.repeat(indent)
+  let result = ''
+
+  for (const [key, value] of Object.entries(obj)) {
+    if (value === null || value === undefined) {
+      result += `${spaces}${key}:\n`
+    } else if (typeof value === 'object' && !Array.isArray(value)) {
+      result += `${spaces}${key}:\n${formatYaml(value, indent + 1)}`
+    } else if (Array.isArray(value)) {
+      result += `${spaces}${key}:\n`
+      value.forEach(item => {
+        if (typeof item === 'object') {
+          result += `${spaces}  -\n`
+          for (const [k, v] of Object.entries(item)) {
+            result += `${spaces}    ${k}: ${v}\n`
+          }
+        } else {
+          result += `${spaces}  - ${item}\n`
+        }
+      })
+    } else {
+      result += `${spaces}${key}: ${value}\n`
+    }
+  }
+
+  return result
+}
+
+// 格式化更新时间
+const formatTime = (timeStr) => {
+  if (!timeStr) return ''
+  // 如果是完整时间格式，只取时间部分
+  if (timeStr.includes(' ')) {
+    return timeStr.split(' ')[1]?.substring(0, 5) || timeStr
+  }
+  return timeStr
+}
 
 export default function SettingsView() {
   return (
@@ -14,35 +55,31 @@ export default function SettingsView() {
 
 function SettingsContent() {
   const [allEnvs, setAllEnvs] = useState({})
-  const [selectedNode, setSelectedNode] = useState('local')
+  const [localNodeId, setLocalNodeId] = useState(null)
+  const [selectedNode, setSelectedNode] = useState(null)
   const [envContent, setEnvContent] = useState('')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [message, setMessage] = useState(null)
 
-  useEffect(() => {
-    loadEnvironment()
-  }, [])
-
-  useEffect(() => {
-    // 当选择的节点变化时，更新编辑器内容
-    if (allEnvs[selectedNode]) {
-      setEnvContent(formatYaml(allEnvs[selectedNode]))
-    }
-  }, [selectedNode, allEnvs])
-
-  const loadEnvironment = async () => {
+  const loadEnvironment = useCallback(async () => {
     setLoading(true)
     try {
       const res = await api.environment.getAll()
       if (res.success && res.data) {
         setAllEnvs(res.data)
-        // 选择第一个节点
+        // 本地节点 ID 由后端返回（第一个节点通常是本地）
         const nodes = Object.keys(res.data)
         if (nodes.length > 0) {
-          setSelectedNode(nodes[0])
-          setEnvContent(formatYaml(res.data[nodes[0]]))
+          // 后端返回的 localNodeId，如果没有则用第一个
+          const localId = res.localNodeId || nodes[0]
+          setLocalNodeId(localId)
+          // 默认选中本地节点
+          if (!selectedNode || !nodes.includes(selectedNode)) {
+            setSelectedNode(localId)
+            setEnvContent(formatYaml(res.data[localId]))
+          }
         }
       } else {
         setMessage({ type: 'error', text: '加载失败: ' + (res.error || '未知错误') })
@@ -52,14 +89,33 @@ function SettingsContent() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [selectedNode])
+
+  useEffect(() => {
+    loadEnvironment()
+  }, [])
+
+  useEffect(() => {
+    // 当选择的节点变化时，更新编辑器内容
+    if (selectedNode && allEnvs[selectedNode]) {
+      setEnvContent(formatYaml(allEnvs[selectedNode]))
+    }
+  }, [selectedNode, allEnvs])
+
+  const isLocalNode = useCallback((nodeId) => {
+    // 判断是否为本地节点
+    if (!nodeId) return false
+    if (localNodeId) return nodeId === localNodeId
+    // 如果没有 localNodeId，检查是否只有一个节点
+    return Object.keys(allEnvs).length <= 1
+  }, [localNodeId, allEnvs])
 
   const handleRefresh = async () => {
     setRefreshing(true)
     setMessage(null)
     try {
       // 刷新当前选中的节点
-      const isLocal = selectedNode === 'local' || Object.keys(allEnvs).length <= 1
+      const isLocal = isLocalNode(selectedNode)
       const res = await api.environment.refresh(isLocal ? null : selectedNode)
       if (res.success) {
         setMessage({ type: 'success', text: res.message || '已发送刷新请求' })
@@ -110,37 +166,8 @@ function SettingsContent() {
     }
   }
 
-  // 简单的对象转 YAML 格式
-  const formatYaml = (obj, indent = 0) => {
-    const spaces = '  '.repeat(indent)
-    let result = ''
-
-    for (const [key, value] of Object.entries(obj)) {
-      if (value === null || value === undefined) {
-        result += `${spaces}${key}:\n`
-      } else if (typeof value === 'object' && !Array.isArray(value)) {
-        result += `${spaces}${key}:\n${formatYaml(value, indent + 1)}`
-      } else if (Array.isArray(value)) {
-        result += `${spaces}${key}:\n`
-        value.forEach(item => {
-          if (typeof item === 'object') {
-            result += `${spaces}  -\n`
-            for (const [k, v] of Object.entries(item)) {
-              result += `${spaces}    ${k}: ${v}\n`
-            }
-          } else {
-            result += `${spaces}  - ${item}\n`
-          }
-        })
-      } else {
-        result += `${spaces}${key}: ${value}\n`
-      }
-    }
-
-    return result
-  }
-
   const nodeList = Object.keys(allEnvs)
+  const canEdit = isLocalNode(selectedNode)
 
   return (
     <motion.div
@@ -176,8 +203,8 @@ function SettingsContent() {
             <button
               className="action-btn primary"
               onClick={handleSave}
-              disabled={saving || selectedNode !== 'local'}
-              title={selectedNode !== 'local' ? '只能编辑本地节点配置' : ''}
+              disabled={saving || !canEdit}
+              title={!canEdit ? '只能编辑本地节点配置' : ''}
             >
               {saving ? '保存中...' : '💾 保存'}
             </button>
@@ -194,10 +221,16 @@ function SettingsContent() {
             {nodeList.map(nodeId => (
               <button
                 key={nodeId}
-                className={`node-tab ${selectedNode === nodeId ? 'active' : ''}`}
+                className={`node-tab ${selectedNode === nodeId ? 'active' : ''} ${isLocalNode(nodeId) ? 'local' : ''}`}
                 onClick={() => setSelectedNode(nodeId)}
               >
-                {allEnvs[nodeId]?.host?.hostname || nodeId}
+                <span className="node-name">
+                  {allEnvs[nodeId]?.host?.hostname || nodeId}
+                  {isLocalNode(nodeId) && <span className="local-badge">本地</span>}
+                </span>
+                {allEnvs[nodeId]?.updated_at && (
+                  <span className="node-time">{formatTime(allEnvs[nodeId].updated_at)}</span>
+                )}
               </button>
             ))}
           </div>
@@ -217,7 +250,7 @@ function SettingsContent() {
             value={envContent}
             onChange={(e) => setEnvContent(e.target.value)}
             spellCheck={false}
-            readOnly={selectedNode !== 'local' && nodeList.length > 1}
+            readOnly={!canEdit}
           />
         )}
       </div>
