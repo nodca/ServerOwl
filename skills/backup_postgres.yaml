@@ -1,0 +1,71 @@
+name: backup_postgres
+description: 'Backup PostgreSQL database to file'
+version: '1.0.0'
+author: 'ServerOwl'
+tags:
+  - backup
+  - database
+  - postgres
+
+parameters:
+  - name: container
+    type: string
+    description: 'PostgreSQL container name'
+    required: true
+  - name: database
+    type: string
+    description: 'Database name to backup'
+    required: true
+  - name: output_dir
+    type: string
+    description: 'Output directory for backup file'
+    required: false
+    default: '/tmp/backups'
+  - name: compress
+    type: bool
+    description: 'Compress backup with gzip'
+    required: false
+    default: true
+
+timeout: 30m
+need_confirm: true
+
+steps:
+  - name: create_output_dir
+    tool: local_shell
+    args:
+      command: 'mkdir -p {{.output_dir}}'
+    on_error: stop
+
+  - name: check_container
+    tool: docker
+    action: inspect
+    args:
+      target: '{{.container}}'
+      format: '{{.State.Running}}'
+    on_error: stop
+
+  - name: dump_database
+    tool: docker
+    action: exec
+    args:
+      container: '{{.container}}'
+      command: 'pg_dump -U postgres {{.database}}'
+    on_error: stop
+
+  - name: save_backup
+    tool: local_shell
+    args:
+      command: |
+        TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+        BACKUP_FILE="{{.output_dir}}/{{.database}}_${TIMESTAMP}.sql"
+        echo '{{index .steps "dump_database"}}' > "${BACKUP_FILE}"
+        {{if .compress}}gzip "${BACKUP_FILE}"{{end}}
+        echo "Backup saved to ${BACKUP_FILE}{{if .compress}}.gz{{end}}"
+    on_error: stop
+
+  - name: cleanup_old_backups
+    tool: local_shell
+    args:
+      command: 'find {{.output_dir}} -name "{{.database}}_*.sql*" -mtime +7 -delete'
+    on_error: continue

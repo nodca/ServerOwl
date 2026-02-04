@@ -1,0 +1,129 @@
+name: restart_service
+description: 'Safely restart a Docker service with health verification'
+version: '1.0.0'
+author: 'ServerOwl'
+tags:
+  - service
+  - restart
+  - docker
+  - maintenance
+
+parameters:
+  - name: container
+    type: string
+    description: 'Container name to restart'
+    required: true
+  - name: wait_seconds
+    type: int
+    description: 'Seconds to wait after restart before health check'
+    required: false
+    default: 10
+  - name: health_retries
+    type: int
+    description: 'Number of health check retries'
+    required: false
+    default: 3
+  - name: backup_logs
+    type: bool
+    description: 'Backup container logs before restart'
+    required: false
+    default: true
+  - name: log_dir
+    type: string
+    description: 'Directory to store log backups'
+    required: false
+    default: '/var/log/serverowl'
+
+timeout: 10m
+need_confirm: true
+
+steps:
+  - name: check_container_exists
+    tool: docker
+    action: inspect
+    args:
+      target: '{{.container}}'
+      format: '{{.Name}}'
+    on_error: stop
+
+  - name: get_current_status
+    tool: docker
+    action: inspect
+    args:
+      target: '{{.container}}'
+      format: '{{.State.Status}}'
+    on_error: stop
+
+  - name: create_log_dir
+    tool: local_shell
+    condition: '{{.backup_logs}}'
+    args:
+      command: 'mkdir -p {{.log_dir}}'
+    on_error: continue
+
+  - name: backup_logs
+    tool: local_shell
+    condition: '{{.backup_logs}}'
+    args:
+      command: |
+        TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+        docker logs {{.container}} > "{{.log_dir}}/{{.container}}_${TIMESTAMP}.log" 2>&1
+        echo "Logs backed up to {{.log_dir}}/{{.container}}_${TIMESTAMP}.log"
+    on_error: continue
+
+  - name: stop_container
+    tool: docker
+    action: stop
+    args:
+      container: '{{.container}}'
+    on_error: stop
+
+  - name: start_container
+    tool: docker
+    action: start
+    args:
+      container: '{{.container}}'
+    on_error: stop
+
+  - name: wait_for_startup
+    tool: local_shell
+    args:
+      command: |
+        echo "Waiting {{.wait_seconds}} seconds for container to start..."
+        sleep {{.wait_seconds}}
+    on_error: continue
+
+  - name: verify_running
+    tool: docker
+    action: inspect
+    args:
+      target: '{{.container}}'
+      format: '{{.State.Running}}'
+    on_error: retry
+    retries: 3
+
+  - name: check_health
+    tool: docker
+    action: inspect
+    args:
+      target: '{{.container}}'
+      format: '{{.State.Health.Status}}'
+    on_error: continue
+
+  - name: get_recent_logs
+    tool: docker
+    action: logs
+    args:
+      container: '{{.container}}'
+      tail: 20
+    on_error: continue
+
+  - name: report_status
+    tool: local_shell
+    args:
+      command: |
+        echo "=== Restart Complete ==="
+        echo "Container: {{.container}}"
+        echo "Status: Running"
+        echo "Recent logs captured"
+    on_error: continue

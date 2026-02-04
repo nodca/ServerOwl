@@ -1,0 +1,33 @@
+# Owl Agent Dockerfile
+# 注意：Agent 通常应直接部署在宿主机上
+# 此 Dockerfile 仅用于测试或特殊场景
+
+FROM golang:1.21-alpine AS builder
+
+RUN apk add --no-cache git ca-certificates tzdata
+
+WORKDIR /build
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o owl-agent ./cmd/owl-agent
+
+FROM alpine:3.19
+
+RUN apk add --no-cache ca-certificates tzdata
+
+RUN addgroup -S owl && adduser -S owl -G owl
+
+RUN mkdir -p /etc/owl /var/lib/owl /var/log/owl \
+    && chown -R owl:owl /var/lib/owl /var/log/owl
+
+COPY --from=builder /build/owl-agent /usr/local/bin/owl-agent
+
+COPY deploy/docker/config/agent.yaml /etc/owl/agent.yaml
+
+USER owl
+
+ENTRYPOINT ["/usr/local/bin/owl-agent"]
+CMD ["-config", "/etc/owl/agent.yaml"]

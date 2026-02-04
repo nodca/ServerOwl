@@ -1,0 +1,60 @@
+# 二进制文件
+*.exe
+serverowl
+serverowl_linux
+serverowl-linux-amd64
+owl-master
+owl-agent
+owl-agent-linux
+
+# 前端
+web-react/dist/
+web-react/node_modules/
+
+# 数据文件
+data/
+*.db
+*.sqlite
+*.sqlite3
+
+# 配置文件（包含敏感信息）
+configs/config.yaml
+configs/agent.yaml
+configs/agent-*.yaml
+configs/config-master-*.yaml
+deploy/docker/config/
+
+# 计划和设计文档（私有）
+M4_PLAN.md
+2025-*.md
+docs/plans/
+优化
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 日志
+*.log
+logs/
+
+# 测试覆盖率
+coverage/
+
+# 临时文件
+tmp/
+temp/
+nul
+
+# Claude Code 本地配置
+.claude/
+.sisyphus/
+
+# 杂项
+C:UsersAdministratorDesktopsubflowsrcmain.py

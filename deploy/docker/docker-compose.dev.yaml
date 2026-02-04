@@ -1,0 +1,27 @@
+# Owl 开发模式 Docker Compose
+# 用法: docker-compose -f docker-compose.yaml -f docker-compose.dev.yaml up
+
+services:
+  owl-master:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.master.dev
+    volumes:
+      - ../../:/app:ro
+      - ./config/master.yaml:/etc/owl/master.yaml:ro
+    environment:
+      - OWL_LOG_LEVEL=debug
+
+  owl-frontend:
+    image: node:20-alpine
+    container_name: owl-frontend
+    working_dir: /app
+    command: sh -c "npm install && npm run dev"
+    ports:
+      - "3000:3000"
+    volumes:
+      - ../../web-react:/app
+    environment:
+      - VITE_API_URL=http://localhost:8080
+    networks:
+      - owl-network

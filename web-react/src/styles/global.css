@@ -1,0 +1,107 @@
+/* ============================================
+   深空观测站 - Deep Space Observatory
+   全局样式
+   ============================================ */
+
+:root {
+  /* 深空配色 */
+  --void-black: #000000;
+  --deep-space: #0a0a1a;
+  --nebula-purple: #6b2fb5;
+  --nebula-magenta: #d946ef;
+  --nebula-cyan: #06b6d4;
+  --star-white: #ffffff;
+  --star-blue: #3b82f6;
+  --star-yellow: #fbbf24;
+  --star-red: #ef4444;
+
+  /* 字体 */
+  --font-display: 'Orbitron', sans-serif;
+  --font-body: 'Rajdhani', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: var(--font-body);
+  background: var(--void-black);
+  color: var(--star-white);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  width: 100%;
+  height: 100%;
+}
+
+/* 滚动条样式 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(107, 47, 181, 0.1);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(107, 47, 181, 0.5);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(107, 47, 181, 0.8);
+}
+
+/* 选择文本 */
+::selection {
+  background: rgba(217, 70, 239, 0.3);
+  color: var(--star-white);
+}
+
+/* 自定义光标 */
+body {
+  cursor: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2" fill="%23ffffff" opacity="0.8"/><circle cx="12" cy="12" r="8" fill="none" stroke="%236b2fb5" stroke-width="1" opacity="0.5"/></svg>') 12 12, auto;
+}
+
+/* 加载动画 */
+@keyframes pulse-glow {
+  0%, 100% {
+    opacity: 1;
+    filter: drop-shadow(0 0 10px rgba(107, 47, 181, 0.8));
+  }
+  50% {
+    opacity: 0.6;
+    filter: drop-shadow(0 0 20px rgba(217, 70, 239, 1));
+  }
+}
+
+@keyframes rotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-20px);
+  }
+}

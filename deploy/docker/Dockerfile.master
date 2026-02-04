@@ -1,0 +1,54 @@
+# Owl Master Dockerfile (前后端分离版)
+# 多阶段构建：前端 + 后端
+
+# ===== 前端构建阶段 =====
+FROM node:20-alpine AS frontend-builder
+
+WORKDIR /frontend
+
+# 复制前端依赖文件
+COPY web-react/package*.json ./
+RUN npm ci --registry=https://registry.npmmirror.com
+
+# 复制前端源码并构建
+COPY web-react/ ./
+RUN npm run build
+
+# ===== 后端构建阶段 =====
+FROM golang:1.21-alpine AS backend-builder
+
+RUN apk add --no-cache git ca-certificates tzdata
+
+WORKDIR /build
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o owl-master ./cmd/serverowl
+
+# ===== 运行阶段 =====
+FROM alpine:3.19
+
+RUN apk add --no-cache ca-certificates tzdata wget
+
+RUN addgroup -S owl && adduser -S owl -G owl
+
+RUN mkdir -p /etc/owl /var/lib/owl/static /var/log/owl \
+    && chown -R owl:owl /var/lib/owl /var/log/owl
+
+# 复制后端二进制
+COPY --from=backend-builder /build/owl-master /usr/local/bin/owl-master
+
+# 复制前端构建产物
+COPY --from=frontend-builder /frontend/dist /var/lib/owl/static
+
+# 复制默认配置
+COPY deploy/docker/config/master.yaml /etc/owl/master.yaml
+
+USER owl
+
+EXPOSE 19527 19528
+
+ENTRYPOINT ["/usr/local/bin/owl-master"]
+CMD ["-config", "/etc/owl/master.yaml"]

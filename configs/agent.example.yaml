@@ -1,0 +1,50 @@
+# Agent 配置示例
+
+agent:
+  id: ""                    # 留空则自动生成 UUID
+  name: "server-01"         # Agent 名称，默认使用主机名
+  tags:                     # 标签，用于分组
+    - production
+    - web
+
+# Master 连接配置
+master:
+  urls:                     # Master 地址列表（支持多主）
+    - "ws://master:9090/ws/agent"
+  reconnect_interval: "5s"  # 重连间隔
+  heartbeat_interval: "30s" # 心跳间隔
+
+# 指标采集配置
+metrics:
+  collect_interval: "60s"   # 采集间隔
+  include_processes: true   # 包含进程信息
+  process_top_n: 10         # Top N 进程
+
+# 规则引擎配置
+rules:
+  enabled: true
+  check_interval: "60s"
+  rules:
+    - name: "high_cpu"
+      description: "CPU 使用率过高"
+      condition: "cpu_percent > 90"
+      duration: "5m"
+      severity: "warning"
+
+    - name: "high_memory"
+      description: "内存使用率过高"
+      condition: "memory_percent > 90"
+      duration: "5m"
+      severity: "warning"
+
+    - name: "disk_full"
+      description: "磁盘空间不足"
+      condition: "disk_percent > 85"
+      duration: "1m"
+      severity: "critical"
+
+# 日志配置
+logging:
+  level: "info"
+  format: "console"
+  output: "stdout"

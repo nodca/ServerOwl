@@ -1,0 +1,37 @@
+# Owl Master Docker Compose 配置
+# 生产模式: docker-compose up -d
+# 开发模式: docker-compose -f docker-compose.yaml -f docker-compose.dev.yaml up
+
+services:
+  owl-master:
+    image: owl-master:latest
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.master
+    container_name: owl-master
+    restart: unless-stopped
+    ports:
+      - "19527:19527"    # WebSocket + Master 同步
+      - "19528:19528"    # Web UI + HTTP API
+    volumes:
+      - ./config/master.yaml:/etc/owl/master.yaml:ro
+      - owl-data:/var/lib/owl
+      - owl-logs:/var/log/owl
+    environment:
+      - OWL_LOG_LEVEL=info
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:19528/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - owl-network
+
+volumes:
+  owl-data:
+  owl-logs:
+
+networks:
+  owl-network:
+    driver: bridge

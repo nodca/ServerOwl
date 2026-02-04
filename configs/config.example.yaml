@@ -1,0 +1,127 @@
+server:
+  port: 9090
+
+monitor:
+  interval: 15s
+
+  containers: []
+    # - name: PostgreSQL
+    #   id: container_id
+
+  http_checks: []
+    # - name: 服务名称
+    #   url: https://example.com/healthz
+    #   timeout: 10s
+
+  databases:
+    postgres:
+      dsn: postgresql://user:password@localhost:5432/dbname?sslmode=disable
+      timeout: 5s
+    redis:
+      addr: localhost:6379
+      password: ""
+      timeout: 5s
+
+  thresholds:
+    disk_percent: 80
+    memory_percent: 90
+
+# 微信企业号通知（可选）
+wechat:
+  corp_id: ""
+  agent_id: 0
+  secret: ""
+  token: ""
+  encoding_aes_key: ""
+  default_user: "@all"
+
+# LLM 配置
+llm:
+  provider: "openai"  # openai, siliconflow, deepseek 等
+  api_key: "your-api-key"
+  base_url: "https://api.openai.com/v1"
+  model: "gpt-4"
+  timeout: 120s
+  retries: 1
+
+# 记忆系统配置
+memory:
+  postgres:
+    dsn: "postgresql://user:password@localhost:5432/serverowl?sslmode=disable"
+    max_conns: 10
+  short_term:
+    max_messages: 20
+    max_turns: 10
+    max_age: "30m"
+  long_term:
+    max_age: "720h"  # 30 天
+  embedding:
+    provider: "openai"
+    api_key: "your-api-key"
+    base_url: "https://api.openai.com/v1"
+    model: "text-embedding-3-small"
+    dimension: 1536
+  forget:
+    schedule: "0 3 * * *"
+    min_age: "168h"
+    threshold: 0.25
+  summary:
+    retention: "2160h"  # 90 天
+    daily_schedule: "0 0 * * *"
+
+# Agent 配置
+agent:
+  max_iterations: 10
+  timeout: "5m"
+  whitelist_path: "configs/tool_whitelist.yaml"
+  log_retention_days: 30
+  log_cleanup_schedule: "@daily"
+
+# 技能系统配置
+skills:
+  enabled: true
+  dirs:
+    - "skills"
+  auto_load: true
+
+# 调度器配置
+scheduler:
+  enabled: true
+  tasks: []
+
+# 日志配置
+logging:
+  level: "info"        # debug, info, warn, error
+  format: "console"    # json, console
+  output: "stdout"
+  sanitize: true
+
+# Web 管理面板配置
+web:
+  enabled: true
+  port: 8080
+  auth:
+    enabled: true
+    username: "admin"
+    password: "change-me"
+    token: ""
+  cors:
+    enabled: true
+    allowed_origins:
+      - "http://localhost:3000"
+      - "http://localhost:5173"
+
+# MCP 协议配置
+mcp:
+  enabled: false
+  transport: "stdio"
+  http_port: 8081
+
+# 多主集群配置
+master_cluster:
+  enabled: false
+  id: "master-01"
+  name: "主节点"
+  addr: "0.0.0.0:9090"
+  sync_interval: "5s"
+  peers: []

@@ -1,0 +1,114 @@
+name: healthcheck
+description: 'Perform health check on services'
+version: '1.0.0'
+author: 'ServerOwl'
+tags:
+  - monitoring
+  - health
+  - diagnostic
+
+parameters:
+  - name: target
+    type: string
+    description: 'Target to check (container name, URL, or host)'
+    required: true
+  - name: check_type
+    type: string
+    description: 'Type of check: container, http, tcp, disk, memory'
+    required: false
+    default: 'container'
+  - name: port
+    type: int
+    description: 'Port for TCP check'
+    required: false
+    default: 80
+  - name: timeout_seconds
+    type: int
+    description: 'Timeout for health check'
+    required: false
+    default: 10
+  - name: threshold_percent
+    type: int
+    description: 'Threshold percentage for disk/memory checks'
+    required: false
+    default: 80
+
+timeout: 5m
+need_confirm: false
+
+steps:
+  - name: container_check
+    tool: docker
+    action: inspect
+    condition: '{{.check_type}} == container'
+    args:
+      target: '{{.target}}'
+      format: '{{.State.Health.Status}}'
+    on_error: continue
+
+  - name: container_status
+    tool: docker
+    action: inspect
+    condition: '{{.check_type}} == container'
+    args:
+      target: '{{.target}}'
+      format: '{{.State.Status}}'
+    on_error: stop
+
+  - name: http_check
+    tool: local_shell
+    condition: '{{.check_type}} == http'
+    args:
+      command: |
+        curl -sf --max-time {{.timeout_seconds}} "{{.target}}" > /dev/null
+        if [ $? -eq 0 ]; then
+          echo "HTTP check passed: {{.target}}"
+        else
+          echo "HTTP check failed: {{.target}}"
+          exit 1
+        fi
+    on_error: stop
+    retries: 2
+
+  - name: tcp_check
+    tool: local_shell
+    condition: '{{.check_type}} == tcp'
+    args:
+      command: |
+        nc -z -w {{.timeout_seconds}} {{.target}} {{.port}}
+        if [ $? -eq 0 ]; then
+          echo "TCP check passed: {{.target}}:{{.port}}"
+        else
+          echo "TCP check failed: {{.target}}:{{.port}}"
+          exit 1
+        fi
+    on_error: stop
+    retries: 2
+
+  - name: disk_check
+    tool: local_shell
+    condition: '{{.check_type}} == disk'
+    args:
+      command: |
+        USAGE=$(df {{.target}} | tail -1 | awk '{print $5}' | tr -d '%')
+        if [ "$USAGE" -lt {{.threshold_percent}} ]; then
+          echo "Disk check passed: {{.target}} at ${USAGE}%"
+        else
+          echo "Disk check failed: {{.target}} at ${USAGE}% (threshold: {{.threshold_percent}}%)"
+          exit 1
+        fi
+    on_error: stop
+
+  - name: memory_check
+    tool: local_shell
+    condition: '{{.check_type}} == memory'
+    args:
+      command: |
+        USAGE=$(free | grep Mem | awk '{printf "%.0f", $3/$2 * 100}')
+        if [ "$USAGE" -lt {{.threshold_percent}} ]; then
+          echo "Memory check passed: ${USAGE}% used"
+        else
+          echo "Memory check failed: ${USAGE}% used (threshold: {{.threshold_percent}}%)"
+          exit 1
+        fi
+    on_error: stop

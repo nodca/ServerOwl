@@ -1,0 +1,33 @@
+[Unit]
+Description=Owl Agent - Server Monitoring Agent
+Documentation=https://github.com/your-org/owl
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=owl
+Group=owl
+ExecStart=/usr/local/bin/owl-agent -config /etc/owl/agent.yaml
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=always
+RestartSec=5
+StartLimitInterval=60
+StartLimitBurst=3
+
+# 安全加固
+NoNewPrivileges=false
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/var/log/owl /var/lib/owl
+PrivateTmp=true
+
+# 资源限制
+LimitNOFILE=65536
+LimitNPROC=4096
+
+# 环境变量
+Environment=OWL_LOG_LEVEL=info
+
+[Install]
+WantedBy=multi-user.target

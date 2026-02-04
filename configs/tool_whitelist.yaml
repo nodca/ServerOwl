@@ -1,0 +1,118 @@
+# configs/tool_whitelist.yaml
+
+# 本地 Shell 白名单
+local_shell_default_confirm: true
+# docker exec 默认策略：不在白名单时是否允许走确认流程
+docker_exec_default_confirm: true
+
+local_shell_whitelist:
+  # 系统信息查询
+  - pattern: "^(df|free|top|uptime|uname|whoami|hostname|date|cal)( |$)"
+    description: "系统信息查询"
+
+  - pattern: "^ps( |$)"
+    description: "进程查询"
+
+  # 文件查看（只读）
+  - pattern: "^(cat|head|tail|less|more) "
+    description: "文件内容查看"
+
+  - pattern: "^(ls|pwd|find|locate|which|whereis)( |$)"
+    description: "文件和路径查询"
+
+  # 文本处理
+  - pattern: "^(grep|awk|sed|cut|sort|uniq|wc) "
+    description: "文本处理"
+
+  # 网络诊断
+  - pattern: "^(netstat|ss|ip|ifconfig)( |$)"
+    description: "网络状态查询"
+
+  - pattern: "^(ping|traceroute|dig|nslookup|curl|wget) "
+    description: "网络诊断"
+
+  # 服务状态查询（只读）
+  - pattern: "^systemctl status "
+    description: "服务状态查询"
+
+  - pattern: "^service .* status"
+    description: "服务状态查询"
+
+  # Docker 只读操作
+  - pattern: "^docker (ps|images|stats|inspect|logs|info|version)( |$)"
+    description: "Docker 查询命令"
+
+  # 编译构建
+  - pattern: "^go build"
+    description: "编译 Go 项目"
+
+# Docker exec 白名单（按容器类型）
+docker_exec_whitelist:
+  # 通用安全命令
+  common:
+    - pattern: "^(cat|head|tail|ls|pwd|env|ps|top|df|du)"
+      confirm: false
+      description: "文件查看和系统信息"
+
+    - pattern: "^(ping|curl|wget|netstat|ss)"
+      confirm: false
+      description: "网络诊断"
+
+  # PostgreSQL
+  postgres:
+    - pattern: "^psql.*-c.*SELECT"
+      confirm: false
+      description: "只读查询"
+
+    - pattern: "^psql.*-c.*(INSERT|UPDATE|DELETE)"
+      confirm: true
+      description: "写操作需确认"
+
+  # Redis
+  redis:
+    - pattern: "^redis-cli (INFO|DBSIZE|KEYS|GET|TTL|TYPE)"
+      confirm: false
+      description: "只读操作"
+
+    - pattern: "^redis-cli (SET|DEL|EXPIRE)"
+      confirm: true
+      description: "写操作需确认"
+
+    - pattern: "^redis-cli FLUSH"
+      confirm: true
+      description: "清空操作需确认"
+
+  # Kafka
+  kafka:
+    - pattern: "kafka-topics.sh.*(--list|--describe)"
+      confirm: false
+      description: "查询操作"
+
+    - pattern: "kafka-consumer-groups.sh.*(--list|--describe)"
+      confirm: false
+      description: "消费组查询"
+
+  # MySQL
+  mysql:
+    - pattern: "^mysql.*-e.*(SELECT|SHOW|DESCRIBE)"
+      confirm: false
+      description: "只读查询"
+
+    - pattern: "^mysql.*-e.*(INSERT|UPDATE|DELETE)"
+      confirm: true
+      description: "写操作需确认"
+
+# 危险命令黑名单（全局禁止）
+dangerous_commands:
+  - "rm -rf"
+  - "dd if="
+  - "mkfs"
+  - "> /dev/"
+  - "chmod 777"
+  - "chown root"
+  - "DROP DATABASE"
+  - "DROP TABLE"
+  - "TRUNCATE"
+  - "FLUSHALL"
+  - "SHUTDOWN"
+  - "CONFIG SET"
