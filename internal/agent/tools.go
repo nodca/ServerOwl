@@ -9,6 +9,22 @@ import (
 	"time"
 )
 
+// AgentInfo 集群节点信息
+type AgentInfo struct {
+	ID       string
+	Hostname string
+	IP       string
+	Status   string
+}
+
+// ClusterCommander 集群命令接口（避免循环依赖）
+type ClusterCommander interface {
+	// ExecuteOnAgent 在指定 Agent 上执行命令，host 可以是 Agent ID、主机名或 IP
+	ExecuteOnAgent(host, command string) (output string, err error)
+	// ListOnlineAgents 返回所有在线节点信息
+	ListOnlineAgents() []AgentInfo
+}
+
 func CreateDockerTool() *Tool {
 	return &Tool{
 		Name:        "docker",
@@ -312,16 +328,16 @@ func handleLocalShellTool(args map[string]interface{}) (string, error) {
 }
 
 // CreateRemoteShellTool 创建远程 Shell 工具
-func CreateRemoteShellTool() *Tool {
+func CreateRemoteShellTool(commander ClusterCommander) *Tool {
 	return &Tool{
 		Name:        "remote_shell",
-		Description: "在远程服务器执行命令（需要用户确认）",
+		Description: "在远程服务器执行命令。host 可以是 Agent ID、主机名、或 IP 地址。优先通过集群通道执行，失败时回退到 SSH。",
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
 				"host": map[string]interface{}{
 					"type":        "string",
-					"description": "主机地址",
+					"description": "目标主机（Agent ID、主机名或 IP）",
 				},
 				"command": map[string]interface{}{
 					"type":        "string",
@@ -330,34 +346,41 @@ func CreateRemoteShellTool() *Tool {
 			},
 			"required": []string{"host", "command"},
 		},
-		Handler:     handleRemoteShellTool,
-		NeedConfirm: true, // 必须用户确认
+		Handler:     createRemoteShellHandler(commander),
+		NeedConfirm: false,
 		Timeout:     60 * time.Second,
 		RetryCount:  0,
 	}
 }
 
-// handleRemoteShellTool 远程 Shell 工具处理函数
-func handleRemoteShellTool(args map[string]interface{}) (string, error) {
-	host, ok := args["host"].(string)
-	if !ok {
-		return "", fmt.Errorf("host must be a string")
-	}
+func createRemoteShellHandler(commander ClusterCommander) func(args map[string]interface{}) (string, error) {
+	return func(args map[string]interface{}) (string, error) {
+		host, ok := args["host"].(string)
+		if !ok {
+			return "", fmt.Errorf("host must be a string")
+		}
+		command, ok := args["command"].(string)
+		if !ok {
+			return "", fmt.Errorf("command must be a string")
+		}
 
-	command, ok := args["command"].(string)
-	if !ok {
-		return "", fmt.Errorf("command must be a string")
-	}
+		// 优先通过集群通道
+		if commander != nil {
+			output, err := commander.ExecuteOnAgent(host, command)
+			if err == nil {
+				return output, nil
+			}
+			// 集群通道失败，回退到 SSH
+		}
 
-	// 执行 SSH 命令
-	// 注意：这里假设已经配置了 SSH 密钥认证
-	cmd := exec.Command("ssh", host, command)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return "", fmt.Errorf("failed to execute remote command on %s: %s", host, string(output))
+		// 回退到 SSH
+		cmd := exec.Command("ssh", host, command)
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			return "", fmt.Errorf("failed to execute remote command on %s: %s", host, string(output))
+		}
+		return string(output), nil
 	}
-
-	return string(output), nil
 }
 
 // CreateRecallMemoryTool 创建记忆检索工具

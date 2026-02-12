@@ -47,6 +47,7 @@ type AgentExecutor struct {
 	actionLogger       *ActionLogger
 	memoryManager      *memory.MemoryManager
 	planner            *Planner
+	clusterCommander   ClusterCommander
 	maxIterations      int
 	maxConsecutiveFail int // 最大连续失败次数
 }
@@ -64,8 +65,27 @@ func NewAgentExecutor(llmClient llm.Client, toolRegistry *ToolRegistry, safetyCh
 	}
 }
 
+// SetClusterCommander 注入集群命令接口
+func (a *AgentExecutor) SetClusterCommander(cc ClusterCommander) {
+	a.clusterCommander = cc
+}
+
 // buildSystemPrompt 构造系统提示词
 func (a *AgentExecutor) buildSystemPrompt() string {
+	prompt := a.baseSystemPrompt()
+	if a.clusterCommander != nil {
+		if agents := a.clusterCommander.ListOnlineAgents(); len(agents) > 0 {
+			prompt += "\n\n## 集群节点\n\n| 节点 ID | 主机名 | IP | 状态 |\n|---------|--------|-----|------|\n"
+			for _, ag := range agents {
+				prompt += fmt.Sprintf("| %s | %s | %s | %s |\n", ag.ID, ag.Hostname, ag.IP, ag.Status)
+			}
+			prompt += "\n使用 remote_shell 时，host 参数可以填节点 ID、主机名或 IP。"
+		}
+	}
+	return prompt
+}
+
+func (a *AgentExecutor) baseSystemPrompt() string {
 	return `# ServerOwl 运维助手
 
 你是 ServerOwl，运行在服务器本地的运维 Agent。

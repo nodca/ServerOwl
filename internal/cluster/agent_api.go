@@ -42,10 +42,13 @@ func (h *AgentAPIHandler) RegisterRoutes(mux *http.ServeMux) {
 	// 主节点同步 API
 	mux.HandleFunc("/api/master/heartbeat", h.handleMasterHeartbeat)
 	mux.HandleFunc("/api/master/agents", h.handleMasterAgents)
+	mux.HandleFunc("/api/master/forward-command", h.handleForwardCommand)
+	mux.HandleFunc("/api/master/command-result", h.handlePeerCommandResult)
 
 	// 管理 API
 	mux.HandleFunc("/api/agents", h.handleListAgents)
 	mux.HandleFunc("/api/agents/command", h.handleSendCommand)
+	mux.HandleFunc("/api/agents/cleanup", h.handleCleanupOffline)
 }
 
 // handleWebSocket 处理 WebSocket 连接
@@ -301,4 +304,86 @@ func (h *AgentAPIHandler) BroadcastRefreshEnv() {
 	if h.wsServer != nil {
 		h.wsServer.BroadcastRefreshEnv()
 	}
+}
+
+// handleCleanupOffline 清理离线节点
+func (h *AgentAPIHandler) handleCleanupOffline(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	count := h.cluster.RemoveOfflineAgents()
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"removed": count,
+		"message": "离线节点已清理",
+	})
+}
+
+// handleForwardCommand 处理来自对端 Master 的命令转发
+func (h *AgentAPIHandler) handleForwardCommand(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req ForwardCommandRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	timeout := time.Duration(req.Timeout) * time.Second
+	if timeout == 0 {
+		timeout = 30 * time.Second
+	}
+
+	// 优先通过 WebSocket 发送
+	if h.wsServer != nil && h.wsServer.GetHub().IsConnected(req.AgentID) {
+		cmdID, err := h.wsServer.SendCommand(req.AgentID, req.Type, req.Payload, timeout)
+		if err == nil {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(ForwardCommandResponse{Success: true, CommandID: cmdID})
+			return
+		}
+	}
+
+	// 回退到 pendingCommands
+	cmdID, err := h.cluster.SendCommand(req.AgentID, req.Type, req.Payload, timeout)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(ForwardCommandResponse{Success: false, Error: err.Error()})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(ForwardCommandResponse{Success: true, CommandID: cmdID})
+}
+
+// handlePeerCommandResult 返回指定 commandID 的结果（供对端 Master 轮询）
+func (h *AgentAPIHandler) handlePeerCommandResult(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	cmdID := r.URL.Query().Get("cmd_id")
+	if cmdID == "" {
+		http.Error(w, "cmd_id required", http.StatusBadRequest)
+		return
+	}
+
+	result, ok := h.cluster.GetCommandResult(cmdID)
+	if !ok {
+		// 尚无结果，返回空对象
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(CommandResult{})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
 }

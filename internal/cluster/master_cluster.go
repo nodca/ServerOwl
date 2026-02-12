@@ -1,6 +1,7 @@
 package cluster
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -349,7 +350,7 @@ func (mc *MasterCluster) GetAllEnvironments() map[string]*AgentEnvironment {
 	return envs
 }
 
-// SendCommand 发送命令到 Agent
+// SendCommand 发送命令到 Agent，本地找不到时尝试转发到 peer
 func (mc *MasterCluster) SendCommand(agentID, cmdType, payload string, timeout time.Duration) (string, error) {
 	mc.mu.RLock()
 	_, exists := mc.agents[agentID]
@@ -359,6 +360,7 @@ func (mc *MasterCluster) SendCommand(agentID, cmdType, payload string, timeout t
 		return "", fmt.Errorf("agent not found: %s", agentID)
 	}
 
+	// 先尝试本地投递（Agent 有 WebSocket 连接或心跳在本节点）
 	cmdID := fmt.Sprintf("cmd-%d", time.Now().UnixNano())
 	cmd := &PendingCommand{
 		ID:        cmdID,
@@ -375,6 +377,90 @@ func (mc *MasterCluster) SendCommand(agentID, cmdType, payload string, timeout t
 	mc.commandMu.Unlock()
 
 	return cmdID, nil
+}
+
+// ForwardCommandToPeers 转发命令到 peer Master，返回 peer 地址和远程 cmdID
+func (mc *MasterCluster) ForwardCommandToPeers(agentID, cmdType, payload string, timeout time.Duration) (peerAddr, remoteCmdID string, err error) {
+	mc.mu.RLock()
+	peers := make([]*MasterInfo, 0, len(mc.peers))
+	for _, p := range mc.peers {
+		if !p.LastSeen.IsZero() {
+			peers = append(peers, p)
+		}
+	}
+	mc.mu.RUnlock()
+
+	reqBody := ForwardCommandRequest{
+		AgentID: agentID,
+		Type:    cmdType,
+		Payload: payload,
+		Timeout: int(timeout.Seconds()),
+	}
+	data, _ := json.Marshal(reqBody)
+
+	for _, peer := range peers {
+		url := fmt.Sprintf("http://%s/api/master/forward-command", peer.Addr)
+		req, err := http.NewRequestWithContext(mc.ctx, "POST", url, bytes.NewReader(data))
+		if err != nil {
+			continue
+		}
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := mc.client.Do(req)
+		if err != nil {
+			continue
+		}
+		var result ForwardCommandResponse
+		json.NewDecoder(resp.Body).Decode(&result)
+		resp.Body.Close()
+		if result.Success {
+			return peer.Addr, result.CommandID, nil
+		}
+	}
+	return "", "", fmt.Errorf("no peer can handle agent: %s", agentID)
+}
+
+// PollPeerCommandResult 轮询 peer 的命令结果
+func (mc *MasterCluster) PollPeerCommandResult(ctx context.Context, peerAddr, cmdID string) (*CommandResult, error) {
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-ticker.C:
+			url := fmt.Sprintf("http://%s/api/master/command-result?cmd_id=%s", peerAddr, cmdID)
+			req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+			if err != nil {
+				continue
+			}
+			resp, err := mc.client.Do(req)
+			if err != nil {
+				continue
+			}
+			var cr CommandResult
+			json.NewDecoder(resp.Body).Decode(&cr)
+			resp.Body.Close()
+			if cr.CommandID != "" {
+				return &cr, nil
+			}
+		}
+	}
+}
+
+// ForwardCommandRequest 转发命令请求
+type ForwardCommandRequest struct {
+	AgentID string `json:"agent_id"`
+	Type    string `json:"type"`
+	Payload string `json:"payload"`
+	Timeout int    `json:"timeout"`
+}
+
+// ForwardCommandResponse 转发命令响应
+type ForwardCommandResponse struct {
+	Success   bool   `json:"success"`
+	CommandID string `json:"command_id,omitempty"`
+	Error     string `json:"error,omitempty"`
 }
 
 // GetCommandResult 获取命令结果
@@ -437,6 +523,39 @@ func (mc *MasterCluster) GetAgentsByTag(tag string) []*AgentRecord {
 		}
 	}
 	return agents
+}
+
+// RemoveOfflineAgents 删除所有离线节点
+func (mc *MasterCluster) RemoveOfflineAgents() int {
+	mc.mu.Lock()
+	defer mc.mu.Unlock()
+
+	count := 0
+	for id, agent := range mc.agents {
+		if agent.Status == "offline" {
+			delete(mc.agents, id)
+			count++
+		}
+	}
+	return count
+}
+
+// FindAgentByHost 通过 Agent ID、主机名或 IP 查找 Agent
+func (mc *MasterCluster) FindAgentByHost(host string) (string, bool) {
+	mc.mu.RLock()
+	defer mc.mu.RUnlock()
+
+	// 精确匹配 Agent ID
+	if a, ok := mc.agents[host]; ok && a.Status == "online" {
+		return host, true
+	}
+	// 匹配主机名或 IP
+	for _, a := range mc.agents {
+		if a.Status == "online" && (a.Hostname == host || a.IP == host || a.Name == host) {
+			return a.ID, true
+		}
+	}
+	return "", false
 }
 
 // GetOnlineAgents 获取在线 Agent
